@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vue 3 Reactivity</title>
+    <script src="https://unpkg.com/vue@next"></script>
+  </head>
+  <body></body>
+  <script>
+    let price = 5;
+    let quantity = 2;
+    let total = 0;
+
+    // 定义一个set集合,它代表依赖关系，保存effects
+    let dep = new Set();
+    let effect = () => {
+      total = price * quantity;
+    };
+
+    // 为了跟踪依赖，我们将effect添加到Set中
+    // 在这里使用Set的原因是，Set不允许有重复值，所以尝试添加同样的effect，它不会变成两个。然后我们的trigger函数就会遍历存储的每一个effect，然后运行他们。
+
+    function track() {
+      dep.add(effect);
+    }
+    function trigger() {
+      dep.forEach((effect) => effect());
+    }
+
+		// 通常，对象会有多个属性，每个属性都需要自己的dep（依赖关系），或者说effect的set(集),那么我们如何存储，或者说让每个属性拥有（自己的）依赖。
+
+		// 将产品封装为一个对象 
+		let product = { price: 5, quantity: 2 };
+
+		// dep其实就是一个effect集,这个effect集应该在值发生变化时重新运行，set中的每个值都只是一个我们需要执行的effect，就像这个计算总数的匿名函数 () => { total = product.price * product.quanttiy };
+		// 要把这些dep储存起来，且方便我们以后再找到他们。我们创建一个deps 映射，它是一张存储了每个属性其dep对象的映射。
+
+		const depsMap = new Map();
+
+		function track2(key) {
+			let dep = depsMap.get(key); // get the dep for this property
+			if(!dep) {
+				depsMap.set(key, (dep = new Set())) // No dep yet, so let's create one 并把它（dep）放到图里对应键的值上，然后我们再往dep里添加effect（因为他是一个set，如果已经存在，它不会再添加新的effect）
+			}
+			dep.add(effect);
+		}
+
+		function trigger2(key) {
+			let dep = depsMap.get(key); // 我们的触发函数将先获取这个键的dep，如果存在会遍历它，运行其每个effect
+			if(dep) {
+				dep.forEach((effect) => {
+					effect2()
+				})
+			}
+		}
+
+		let total2 = 0;
+
+		let effect2 =  () => {
+			total2 = product.price * product.quantity;
+		}
+
+		track2('quantity');
+
+		effect2();
+
+		const targetMap = new WeakMap();
+		let effect3 = () => {
+			total3 = product.price * product.quantity;
+		}
+		function track3(target, key) {
+			let depsMap = targetMap.get(key);
+
+			if(!depsMap) {
+				targetMap.set(target, (depsMap = new Map()));
+			}
+
+			let dep = depsMap.get(key);
+			if(!dep) {
+				depsMap.set(key, (dep = new Set()));
+			}
+			dep.add(effect3);
+		}
+
+		function trigger3(target,key) {
+			const depsMap = targetMap.get(target);
+			if(!depsMap) return;
+			let dep = depsMap.get(key);
+			if(dep) {
+				console.log(dep, 'dep')
+				dep.forEach(effect => effect());
+			}
+		}
+
+		let total3 = 0;
+
+		track3(product, 'quantity');
+		effect3();
+  </script>
+</html>

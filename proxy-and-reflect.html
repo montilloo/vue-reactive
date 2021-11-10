@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>2 - Proxy and Reflect</title>
+    <script src="https://unpkg.com/vue@next"></script>
+  </head>
+  <body></body>
+  <script>
+    let product = { price: 5, quantity: 2 };
+    let total = 0;
+    const targetMap = new WeakMap();
+    let activeEffect = null;
+    let salePrice = 0;
+    let effect = () => {
+      total = product.price * product.quantity;
+    };
+
+    effect(() => {
+      salePrice = product.pirce + 0.9
+    });
+
+    function track(target, key) {
+      if (activeEffect) {
+        let depsMap = targetMap.get(key);
+
+        if (!depsMap) {
+          targetMap.set(target, (depsMap = new Map()));
+        }
+
+        let dep = depsMap.get(key);
+        if (!dep) {
+          depsMap.set(key, (dep = new Set()));
+        }
+        dep.add(activeEffect);
+      }
+    }
+
+    function trigger(target, key) {
+      const depsMap = targetMap.get(target);
+      if (!depsMap) return;
+      let dep = depsMap.get(key);
+      if (dep) {
+        dep.forEach((effect) => effect());
+      }
+    }
+    // 我们想让响应式引擎自动调用和跟踪，基本上来说，在运行effect时。如果访问了产品的属性或者使用了Get，这正是我们想调用track去保存effect的时候，如果产品的属性改变了，或者说使用了set
+    // 这时我们正向调用trigger来运行那些保存了的effect。所以，问题变成如何拦截这些GET和SET方法，在Vue2中使用了ES5的Object.defineProperty()去拦截get和set
+    // 使用Vue3，我们将使用ES6 Reflect和ES6 Proxy
+
+
+    // 三种访问对象属性的方式
+    // .访问符
+    // []
+    // Reflect.get(product, 'quantity');
+    // 但是Reflect具有超能力，默认情况下对对象进行委托
+    // receiver是一个接收器，它将传递到我们的Reflect调用中，它保证了我们的对象有继承自其他对象的值或函数时,this指针能正确的指向使用的对象。
+    let proxiedProduct = new Proxy(product, {
+      get(target, key, receiver) {
+        console.log("Get was called with key = " + key);
+        return Reflect.get(target, key, receiver);
+      },
+      set(target, key, value, receiver) {
+        console.log(
+          "Set was called with key = " + key + " and value =" + value
+        );
+        return Reflect.set(target, key, value, receiver);
+      },
+    });
+
+    console.log(proxiedProduct.quantity);
+    proxiedProduct.price = 6;
+
+    // 再封装一下代码，使它长得更像Vue3的源码
+    function reactive(target) {
+      const handler = {
+        get(target, key, receiver) {
+          console.log("Get was called with key = " + key);
+          return Reflect.get(target, key, receiver);
+        },
+        set(target, key, value, receiver) {
+          console.log(
+            "Set was called with key = " + key + " and value =" + value
+          );
+          return Reflect.set(target, key, value, receiver);
+        },
+      };
+      return new Proxy(target, handler);
+    }
+
+    let reactiveProduct = reactive(product);
+    reactiveProduct.price = 5;
+    console.log(reactiveProduct.price);
+
+    // 继续将track和trigger封装进来
+    function reactiveFinal(target) {
+      const handler = {
+        get(target, key, receiver) {
+          let result = Reflect.get(target, key, receiver);
+          track(target, key);
+          return result;
+        },
+        set(target, key, value, receiver) {
+          let oldValue = target[key];
+          let result = Reflect.set(target, key, value, receiver);
+          if (oldValue != result) {
+            trigger(target, key);
+          }
+          return result;
+        },
+      };
+      return new Proxy(target, handler);
+    }
+
+    let productFinal = reactiveFinal(product);
+    console.log(productFinal.price);
+    productFinal.price = 10;
+    productFinal.quantity = 20;
+    effect();
+    console.log(total);
+
+    // 使用对象访问器创建ref
+    function ref(raw){
+      const r = {
+        get value() {
+          track(r, 'value');
+          return raw;
+        },
+        set value(newVal) {
+          raw = newVal;
+          trigger(r, 'value');
+        }
+      }
+
+      return r;
+    }
+  </script>
+</html>
